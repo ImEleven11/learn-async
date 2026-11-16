@@ -54,6 +54,61 @@ class JobRepository:
             created_at=now,
             updated_at=now,
         )
+
+    # 应用启动时恢复需要重新处理的持久化任务
+    async def prepare_incomplete_for_recovery(self) -> tuple[UUID, ...]:
+        """Reset interrupted work and return all durable jobs that need queuing."""
+        now = datetime.now(UTC).isoformat()
+        async with self._database.transaction() as connection:
+            # 把上次运行中断的 `running` 重置为 `pending`
+            await connection.execute(
+                """
+                UPDATE jobs
+                SET status = ?, updated_at = ?
+                WHERE status = ?
+                """,
+                (
+                    JobStatus.PENDING.value,
+                    now,
+                    JobStatus.RUNNING.value,
+                ),
+            )
+            # 查询全部 `pending` ID
+            cursor = await connection.execute(
+                """
+                SELECT id FROM jobs
+                WHERE status = ?
+                ORDER BY created_at, id
+                """,
+                (JobStatus.PENDING.value,),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+
+        return tuple(UUID(row["id"]) for row in rows)
+
+    # 将 pending 改为 running
+    async def claim_pending(self, job_id: UUID) -> bool:
+        """Atomically move one pending job to running."""
+        now = datetime.now(UTC).isoformat()
+        async with self._database.transaction() as connection:
+            cursor = await connection.execute(
+                """
+                UPDATE jobs
+                SET status = ?, updated_at = ?
+                WHERE id = ? AND status = ?
+                """,
+                (
+                    JobStatus.RUNNING.value,
+                    now,
+                    str(job_id),
+                    JobStatus.PENDING.value,
+                ),
+            )
+            claimed = cursor.rowcount == 1
+            await cursor.close()
+
+        return claimed
     
     # 根据 ID 查询任务
     async def get(self, job_id: UUID) -> Job | None:

@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
@@ -5,6 +6,20 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings
 from app.main import create_app, lifespan
+
+
+async def wait_for_job_status(
+    client: AsyncClient,
+    job_id: str,
+    expected_status: str,
+) -> dict[str, object]:
+    async with asyncio.timeout(1):
+        while True:
+            response = await client.get(f"/api/v1/jobs/{job_id}")
+            job = response.json()
+            if job["status"] == expected_status:
+                return job
+            await asyncio.sleep(0.01)
 
 
 async def test_create_and_query_job(client: AsyncClient) -> None:
@@ -27,10 +42,11 @@ async def test_create_and_query_job(client: AsyncClient) -> None:
     assert created["completed_count"] == 0
     assert created["failed_count"] == 0
 
-    get_response = await client.get(f"/api/v1/jobs/{created['id']}")
+    claimed = await wait_for_job_status(client, created["id"], "running")
 
-    assert get_response.status_code == 200
-    assert get_response.json() == created
+    assert claimed["id"] == created["id"]
+    assert claimed["name"] == created["name"]
+    assert claimed["updated_at"] >= created["updated_at"]
 
 
 async def test_new_job_has_no_results(client: AsyncClient) -> None:
@@ -40,10 +56,12 @@ async def test_new_job_has_no_results(client: AsyncClient) -> None:
     )
     job = create_response.json()
 
+    await wait_for_job_status(client, job["id"], "running")
     results_response = await client.get(f"/api/v1/jobs/{job['id']}/results")
 
     assert results_response.status_code == 200
-    assert results_response.json() == {"job": job, "results": []}
+    assert results_response.json()["job"]["status"] == "running"
+    assert results_response.json()["results"] == []
 
 
 async def test_unknown_job_returns_404(client: AsyncClient) -> None:
@@ -94,7 +112,6 @@ async def test_job_survives_application_restart(tmp_path: Path) -> None:
             transport=ASGITransport(app=second_app),
             base_url="http://test",
         ) as client:
-            response = await client.get(f"/api/v1/jobs/{job_id}")
+            job = await wait_for_job_status(client, job_id, "running")
 
-    assert response.status_code == 200
-    assert response.json()["name"] == "Persistent"
+    assert job["name"] == "Persistent"

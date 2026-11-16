@@ -106,7 +106,7 @@ learn-async/
 
 ### 阶段 2：队列与后台 Worker
 
-加入 `asyncio.Queue`；应用启动时创建 Worker；任务能够从 `pending` 进入 `running`，再进入终态。
+加入 `asyncio.Queue`；应用启动时创建 Worker；任务被后台 Worker 从 `pending` 原子认领为 `running`。本阶段不伪造巡检结果，任务终态留到真实执行器加入后处理。
 
 核心知识：`create_task()`、生产者/消费者、`put()`、`get()`、`task_done()`、Task 生命周期。
 
@@ -114,7 +114,7 @@ learn-async/
 
 ### 阶段 3：受控并发巡检
 
-接入 HTTPX，使用 `TaskGroup` 并发巡检多个 URL，用 `Semaphore` 限制并发，并逐项保存结果。
+接入 HTTPX，使用 `TaskGroup` 并发巡检多个 URL，用 `Semaphore` 限制并发，逐项保存结果并将任务更新为终态。
 
 核心知识：协程、Task、`await`、结构化并发、连接池、并发限制。
 

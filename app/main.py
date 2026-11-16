@@ -13,6 +13,7 @@ from app.domain.exceptions import JobNotFoundError
 from app.repositories.database import Database
 from app.repositories.jobs import JobRepository
 from app.services.jobs import JobService
+from app.workers.jobs import JobWorker
 
 logger = logging.getLogger(__name__)
 
@@ -21,19 +22,30 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     database = Database(settings.database_path)
+    worker: JobWorker | None = None
     await database.connect() # 连接 sqlite
     try:
         await database.initialize() # 初始化数据库
+        repository = JobRepository(database)
+        recoverable_job_ids = await repository.prepare_incomplete_for_recovery()
+        worker = JobWorker(repository)
+        for job_id in recoverable_job_ids:
+            await worker.enqueue(job_id)
+        worker.start()
         app.state.database = database
-        app.state.job_service = JobService(JobRepository(database))
+        app.state.job_worker = worker
+        app.state.job_service = JobService(repository, worker.enqueue)
         logger.info(
-            "application_started service=%s environment=%s database=%s",
+            "application_started service=%s environment=%s database=%s recovered_jobs=%d",
             settings.app_name,
             settings.environment,
             settings.database_path,
+            len(recoverable_job_ids),
         )
         yield
     finally:
+        if worker is not None:
+            await worker.stop()
         await database.close()
         logger.info("application_stopped service=%s", settings.app_name)
 

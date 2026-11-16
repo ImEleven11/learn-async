@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from app.domain.exceptions import JobNotFoundError
@@ -6,11 +7,18 @@ from app.repositories.jobs import JobRepository
 
 
 class JobService:
-    def __init__(self, repository: JobRepository) -> None:
+    def __init__(
+        self,
+        repository: JobRepository,
+        enqueue_job: Callable[[UUID], Awaitable[None]],
+    ) -> None:
         self._repository = repository
+        self._enqueue_job = enqueue_job # enqueue_job只是一个参数名
 
     async def create_job(self, name: str, urls: tuple[str, ...]) -> Job:
-        return await self._repository.create(name=name, urls=urls)
+        job = await self._repository.create(name=name, urls=urls)
+        await self._enqueue_job(job.id) # 阶段2新增之处
+        return job
 
     async def get_job(self, job_id: UUID) -> Job:
         job = await self._repository.get(job_id)
