@@ -2,7 +2,7 @@
 
 一个按生产调用链逐步构建的 Python 异步编程学习项目。
 
-当前进度：阶段 0，只包含应用骨架、生命周期和健康检查。
+当前进度：阶段 1，已包含应用骨架、任务 API 和 SQLite 异步持久化。任务目前只会保存为 `pending`，尚未进入后台执行。
 
 ## 安装
 
@@ -27,6 +27,16 @@ python -m uvicorn app.main:app --reload
 - 健康检查：<http://127.0.0.1:8000/health>
 - OpenAPI 文档：<http://127.0.0.1:8000/docs>
 
+创建任务示例：
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://127.0.0.1:8000/api/v1/jobs" `
+  -ContentType "application/json" `
+  -Body '{"name":"local demo","urls":["https://example.com"]}'
+```
+
 ## 测试
 
 ```powershell
@@ -38,4 +48,5 @@ python -m pytest
 ```powershell
 $env:APP_ENVIRONMENT = "development"
 $env:APP_LOG_LEVEL = "INFO"
+$env:APP_DATABASE_PATH = "data/async_site_inspector.db"
 ```

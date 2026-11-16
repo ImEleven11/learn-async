@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 
 from app.core.config import Settings
 
@@ -7,6 +8,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("APP_NAME", "Configured Inspector")
     monkeypatch.setenv("APP_ENVIRONMENT", "test")
     monkeypatch.setenv("APP_LOG_LEVEL", "debug")
+    monkeypatch.setenv("APP_DATABASE_PATH", "test-data/jobs.db")
 
     settings = Settings.from_env()
 
@@ -14,6 +16,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -
         app_name="Configured Inspector",
         environment="test",
         log_level="DEBUG",
+        database_path=Path("test-data/jobs.db"),
     )
 
 
